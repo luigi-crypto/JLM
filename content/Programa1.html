@@ -1,0 +1,64 @@
+from IPython.display import HTML
+
+# Versión con auto-reintento y logs de diagnóstico
+HTML("""
+<div style="background: #111; padding: 20px; color: #0f0; font-family: monospace; border-radius: 10px;">
+    <div id="log">SISTEMA: Iniciando...</div>
+    <video id="v" width="640" height="480" autoplay playsinline style="display:none;"></video>
+    <canvas id="c" width="640" height="480" style="border: 2px solid #0f0; margin-top: 10px;"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<script>
+    const v = document.getElementById('v');
+    const c = document.getElementById('c');
+    const ctx = c.getContext('2d');
+    const log = document.getElementById('log');
+
+    const fm = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    fm.setOptions({ maxNumFaces: 1, refineLandmarks: false, minDetectionConfidence: 0.5 });
+
+    fm.onResults((res) => {
+        log.innerText = "SISTEMA: Online - Rastreeando 468 puntos";
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.drawImage(res.image, 0, 0, c.width, c.height);
+        if (res.multiFaceLandmarks) {
+            for (const p of res.multiFaceLandmarks) {
+                drawConnectors(ctx, p, FACEMESH_TESSELATION, {color: '#00FF00', lineWidth: 1});
+            }
+        }
+    });
+
+    async function startCamera(retry = 0) {
+        log.innerText = `SISTEMA: Intento de cámara ${retry + 1}...`;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({video: {width: 640, height: 480}});
+            v.srcObject = stream;
+            
+            const cam = new Camera(v, {
+                onFrame: async () => { await fm.send({image: v}); },
+                width: 640, height: 480
+            });
+            await cam.start();
+        } catch (err) {
+            if (retry < 5) {
+                setTimeout(() => startCamera(retry + 1), 2000);
+            } else {
+                log.innerText = "SISTEMA: Error crítico - " + err;
+                log.style.color = "red";
+            }
+        }
+    }
+
+    // Esperar a que las librerías existan en memoria antes de arrancar
+    const checkLibs = setInterval(() => {
+        if (typeof FaceMesh !== 'undefined') {
+            clearInterval(checkLibs);
+            startCamera();
+        }
+    }, 1000);
+</script>
+""")
